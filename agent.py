@@ -121,48 +121,6 @@ def care_entitlements(cause_code: str, delay_minutes: int, status: str,
 TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence goal
 EXTRA_TOOLS: List[Dict[str, Any]] = [     # ✏️ Build 2, step 2.1: schemas for the tools you add
     {
-        "name": "next_available_day",
-        "description": (
-            "Answer the first question a cancelled or stranded customer asks: what is the "
-            "soonest day you can actually get me out? Call it for questions about DATES, "
-            "when the customer wants to know how long they are stuck rather than which "
-            "specific flight to take; search_alternatives answers 'which flight', this "
-            "answers 'which day'. It searches Larkspur inventory forward from the "
-            "disrupted travel date and returns the earliest date with an open seat, or "
-            "says plainly there is none in the horizon it can see. It answers for one "
-            "passenger only, holds nothing, and books nothing."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "origin": {"type": "string", "description": "Departure airport, three-letter IATA code, e.g. DEN."},
-                "dest": {"type": "string", "description": "Arrival airport, three-letter IATA code, e.g. BOI."},
-                "date": {"type": "string", "description": "The disrupted travel date, YYYY-MM-DD. The search starts here and looks forward only."},
-                "cabin": {"type": "string", "enum": ["Y", "J"], "description": "Cabin to search: Y for main, J for first. Use the cabin the customer is already ticketed in. Defaults to Y."},
-            },
-            "required": ["origin", "dest", "date"],
-        },
-    },
-    {
-        "name": "fare_rules",
-        "description": (
-            "Quote the Larkspur Handbook text behind an entitlement decision, straight "
-            "from the published fare rules excerpt. Call it when a customer challenges an "
-            "answer and wants to know the rule itself, or asks why something is or is not "
-            "covered, so the reply can quote the Handbook instead of paraphrasing it. It "
-            "needs one section: a number (4 to 7) or words from its title, such as 'care "
-            "while you wait' or 'fare families'. It is reference reading, not a decision: "
-            "check_policy is still the source of truth for what this customer is owed."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "section": {"type": "string", "description": "Which Handbook section to read: a number like '6', or words from its title like 'fare families', 'when we delay', 'care while you wait', 'chat automation'."},
-            },
-            "required": ["section"],
-        },
-    },
-    {
         "name": "reopen_stats",
         "description": (
             "Look up how often a kind of disruption problem came back within 72 hours, "
@@ -209,8 +167,6 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [     # ✏️ Build 2, step 2.1: schemas fo
     },
 ]
 LOCAL_TOOLS: Dict[str, Any] = {           # ✏️ Build 2, step 2.1: the functions behind them
-    "next_available_day": next_available_day,
-    "fare_rules": fare_rules,
     "reopen_stats": reopen_stats,
     "care_entitlements": care_entitlements,
 }
@@ -280,7 +236,7 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
 def tool_list() -> List[Dict[str, Any]]:                   # ✏️ Build 2, step 2.2
     """Given. Exactly what Claude is offered on every turn; run.py --show-tools
     prints this list."""
-    return build_tools() + EXTRA_TOOLS
+    return build_tools() + EXTRA_TOOLS + mcp_client.tools()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
