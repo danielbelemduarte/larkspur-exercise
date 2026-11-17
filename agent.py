@@ -11,6 +11,8 @@ Steps and gates:  https://anthropicpartnerbasecamp.bts.com/
 from __future__ import annotations
 import json
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List
 from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
@@ -129,29 +131,56 @@ def text_of(response) -> str:
     return texts[-1] if texts else ""
 
 
+# The MCP client has one pipe and one shared reply queue, and it throws away any reply
+# whose id is not the one it is waiting for. Two MCP calls at once can swallow each
+# other's answers, so MCP calls take turns. Everything else may overlap.
+_MCP_LOCK = threading.Lock()
+
+
+def run_tool(block) -> Any:
+    """Run one tool_use block wherever that tool lives: the MCP server, LOCAL_TOOLS,
+    or support/tools.py. No try/except here: mcp_client.call_remote() and
+    support.call_local() answer with an error dict instead of raising, and both
+    record what came back on the trace."""
+    if block.name in mcp_client.tool_names:
+        with _MCP_LOCK:
+            return mcp_client.call_remote(block.name, block.input)
+    if block.name in LOCAL_TOOLS:
+        return call_local(LOCAL_TOOLS[block.name], block.name, block.input)
+    return execute_tool(block.name, block.input)
+
+
 def tool_results(response) -> List[Dict[str, Any]]:
-    """Given. Runs every tool_use block and packages the results the way the
-    API expects them back. A tool can live in three places: the MCP server,
-    LOCAL_TOOLS, or support/tools.py."""
-    # three branches, no try/except in this file: mcp_client.call_remote() and
-    # support.call_local() answer with an error dict instead of raising, and both
-    # record what came back on the trace
-    results = []
-    for block in response.content:
-        if getattr(block, "type", None) != "tool_use":
-            continue
-        if block.name in mcp_client.tool_names:
-            output = mcp_client.call_remote(block.name, block.input)
-        elif block.name in LOCAL_TOOLS:
-            output = call_local(LOCAL_TOOLS[block.name], block.name, block.input)
-        else:
-            output = execute_tool(block.name, block.input)
-        results.append({
-            "type": "tool_result",
-            "tool_use_id": block.id,
-            "content": str(output),
-        })
-    return results
+    """Runs every tool_use block in the turn at the same time, and packages the
+    results the way the API expects them back, in the order Claude asked."""
+    blocks = [b for b in response.content if getattr(b, "type", None) == "tool_use"]
+
+    # Calls to the same tool stay one after another, in the order Claude asked. The
+    # tracer pairs each result with the earliest unanswered call of that name, so two
+    # calls to one tool finishing out of order would put each answer on the wrong ask.
+    groups: Dict[str, List[Any]] = {}
+    for block in blocks:
+        groups.setdefault(block.name, []).append(block)
+
+    outputs: Dict[str, Any] = {}
+
+    def run_group(group) -> None:
+        for block in group:
+            outputs[block.id] = run_tool(block)
+
+    if len(groups) > 1:
+        with ThreadPoolExecutor(max_workers=len(groups)) as pool:
+            for future in [pool.submit(run_group, g) for g in groups.values()]:
+                future.result()  # a tool that raises still raises, as it did before
+    else:
+        for group in groups.values():
+            run_group(group)
+
+    return [{
+        "type": "tool_result",
+        "tool_use_id": block.id,
+        "content": str(outputs[block.id]),
+    } for block in blocks]
 
 
 def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏️ Build 1, step 1.2
@@ -237,7 +266,16 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         },
         {
             "name": "search_alternatives",
-            "description": "search flight alternatives for a given PNR",
+            "description": (
+                "List the other Larkspur flights this customer could be moved to, for the "
+                "segment that was disrupted. It needs only the PNR and nothing from "
+                "get_flight_status, so do not wait for the flight status or check_policy: "
+                "once lookup_booking has found the booking, and only if the booking shows a "
+                "cancelled, delayed or missed segment that is not a group, partner or "
+                "unaccompanied-minor case, ask for this in the same turn as "
+                "get_flight_status. Never call it before lookup_booking has succeeded, and "
+                "say nothing about its results if the booking was not found."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {"pnr": {"type": "string"}},
