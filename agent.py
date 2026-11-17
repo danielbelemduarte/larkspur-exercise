@@ -17,8 +17,30 @@ from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
 MAX_TOOL_CALLS = 8  # Larkspur's own build capped the loop here; then a human takes over.
 
 TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence goal
-EXTRA_TOOLS: List[Dict[str, Any]] = []   # ✏️ Build 2, step 2.1: schemas for the tools you add
-LOCAL_TOOLS: Dict[str, Any] = {}         # ✏️ Build 2, step 2.1: the functions behind them
+EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for the tools you add
+    {
+        "name": "next_available_day",
+        "description": (
+            "Find the earliest date that has an open flight between the customer's origin "
+            "and destination on the same cabin. Use this when the traveler asks for the "
+            "soonest possible date rather than a specific alternative flight. Returns the "
+            "date as an ISO string."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "origin": {"type": "string"},
+                "dest": {"type": "string"},
+                "date": {"type": "string", "description": "ISO date in YYYY-MM-DD format"},
+                "cabin": {"type": "string", "enum": ["Y", "C", "F"]},
+            },
+            "required": ["origin", "dest", "date"],
+        },
+    }
+]
+LOCAL_TOOLS: Dict[str, Any] = {           # ✏️ Build 2, step 2.1: the functions behind them
+    "next_available_day": next_available_day,
+}
 
 
 def text_of(response) -> str:
