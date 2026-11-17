@@ -119,82 +119,8 @@ def care_entitlements(cause_code: str, delay_minutes: int, status: str,
 
 
 TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence goal
-<<<<<<< HEAD
-EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for the tools you add
-    {
-        "name": "next_available_day",
-        "description": (
-            "Find the earliest date that has an open flight between the customer's origin "
-            "and destination on the same cabin. Use this when the traveler asks for the "
-            "soonest possible date rather than a specific alternative flight. Returns the "
-            "date as an ISO string."
-=======
-EXTRA_TOOLS: List[Dict[str, Any]] = [     # ✏️ Build 2, step 2.1: schemas for the tools you add
-    {
-        "name": "reopen_stats",
-        "description": (
-            "Look up how often a kind of disruption problem came back within 72 hours, "
-            "from a sample of 8 real human-handled chats. Call it when a customer asks "
-            "whether their problem is actually resolved or likely to come back, or when "
-            "deciding how firmly to close out a conversation. It needs the kind of problem "
-            "(for example 'rebook after cancellation', 'hotel request', 'refund versus "
-            "credit', 'missed connection', 'goodwill request', 'status anxiety', 'baggage "
-            "after rebooking', 'voluntary change'). The sample is tiny, so the answer "
-            "always comes with its sample size; treat a single-digit sample as a pattern "
-            "to watch, not a statistic to quote to the customer."
->>>>>>> 6503cfef2bd617439b6347c3d74fc7b228f32441
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-<<<<<<< HEAD
-                "origin": {"type": "string"},
-                "dest": {"type": "string"},
-                "date": {"type": "string", "description": "ISO date in YYYY-MM-DD format"},
-                "cabin": {"type": "string", "enum": ["Y", "C", "F"]},
-            },
-            "required": ["origin", "dest", "date"],
-        },
-    }
-]
-LOCAL_TOOLS: Dict[str, Any] = {           # ✏️ Build 2, step 2.1: the functions behind them
-    "next_available_day": next_available_day,
-=======
-                "intent_label": {"type": "string", "description": "The kind of problem, in a few words, e.g. 'rebook after cancellation' or 'hotel request'."},
-            },
-            "required": ["intent_label"],
-        },
-    },
-    {
-        "name": "care_entitlements",
-        "description": (
-            "Look up the meal, hotel and ground-transport entitlement for a disruption in "
-            "the abstract, with the Handbook section 6 explanation attached. Call it when "
-            "a customer asks a general 'do I get a meal or a hotel while I wait?' "
-            "question, including hypothetically before a specific booking has even been "
-            "pulled up. It needs the disruption's cause code, current delay in minutes, "
-            "status, and whether the wait is overnight away from home. Unlike "
-            "check_policy, it does not take a PNR and does not decide rebooking, refund, "
-            "goodwill or escalation: for a real customer's actual entitlement, including "
-            "any loyalty-tier bonus, check_policy is still the source of truth."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "cause_code": {"type": "string", "enum": ["WX", "ATC", "MX", "CREW", "SEC"], "description": "Cause of the disruption, from get_flight_status."},
-                "delay_minutes": {"type": "integer", "description": "Current delay in minutes. Pass 0 for CANCELLED or DIVERTED."},
-                "status": {"type": "string", "enum": ["ON_TIME", "DELAYED", "CANCELLED", "DIVERTED"]},
-                "overnight": {"type": "boolean", "description": "True if the wait stretches overnight away from the customer's home airport. Defaults to false."},
-            },
-            "required": ["cause_code", "delay_minutes", "status"],
-        },
-    },
-]
-LOCAL_TOOLS: Dict[str, Any] = {           # ✏️ Build 2, step 2.1: the functions behind them
-    "reopen_stats": reopen_stats,
-    "care_entitlements": care_entitlements,
->>>>>>> 6503cfef2bd617439b6347c3d74fc7b228f32441
-}
+EXTRA_TOOLS: List[Dict[str, Any]] = []    # ✏️ Build 2, step 2.1: schemas for the tools you add
+LOCAL_TOOLS: Dict[str, Any] = {}           # ✏️ Build 2, step 2.1: the functions behind them
 
 
 def text_of(response) -> str:
