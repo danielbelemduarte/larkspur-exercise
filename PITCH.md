@@ -8,7 +8,7 @@ Number: $0.073 per resolved contact, model cost only, modelled at Sonnet list ra
 Safety check: The agent does not book a seat without the customer: confirm_rebooking needs a token only the customer's own Confirm-click produces, and its description tells the agent it cannot supply one. In the K7PQ2M trace it called lookup_booking, get_flight_status, next_available_day and check_policy, and never hold_seat or confirm_rebooking. We did not test what the backend does with a made-up token.
 Next: Add a tone instruction for abusive customers, write eval cases for the five ticket types (evals/cases.json does not exist yet), then bench before and after.
 Still broken: Nothing watches tone: TONE_ADDENDUM is empty, and the abusive-message ticket R8KD3F ran the same 4 turns and 3 tool calls as the ordinary tickets, so nothing shows it being handled differently.
-Lever: <cost | speed | intelligence>
+Lever: cost
 
 ## Priya asked
 Costs:
