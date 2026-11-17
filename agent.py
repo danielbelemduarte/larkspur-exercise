@@ -9,6 +9,9 @@ Where you edit:   grep -n '✏' agent.py   (six marks, one per place)
 Steps and gates:  https://anthropicpartnerbasecamp.bts.com/
 """
 from __future__ import annotations
+import json
+import re
+from pathlib import Path
 from typing import Any, Dict, List
 from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
                      new_session, next_available_day, record_tool_result,
@@ -16,7 +19,107 @@ from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
 
 MAX_TOOL_CALLS = 8  # Larkspur's own build capped the loop here; then a human takes over.
 
+DATA_DIR = Path(__file__).resolve().parent / "data" / "americas"  # ✏️ Build 2, step 2.1
+
+
+def fare_rules(section: str) -> Dict[str, Any]:
+    """The functions behind EXTRA_TOOLS. Reads fare_rules_excerpt.md straight off disk
+    and returns the Handbook section asked for, matched on its number or its title."""
+    text = (DATA_DIR / "fare_rules_excerpt.md").read_text(encoding="utf-8")
+    sections, current = [], None
+    for line in text.splitlines():
+        if line.startswith("### "):
+            heading = line[4:].strip()
+            m = re.match(r"^(\d+)\.\s*(.*)$", heading)
+            current = {"number": m.group(1) if m else "", "title": m.group(2) if m else heading,
+                       "heading": heading, "lines": []}
+            sections.append(current)
+        elif current is not None:
+            current["lines"].append(line)
+    for s in sections:
+        s["text"] = "### %s\n\n%s" % (s["heading"], "\n".join(s.pop("lines")).strip())
+
+    query = re.sub(r"^section\s+", "", (section or "").strip().lower()).rstrip(".")
+    if not query:
+        return {"error": "section is required.", "available": [s["heading"] for s in sections]}
+    for s in sections:
+        if query == s["number"] or query in s["title"].lower():
+            return {"section": s["number"], "title": s["title"], "text": s["text"]}
+    return {"error": "No section matches %r." % section, "available": [s["heading"] for s in sections]}
+
+
+def reopen_stats(intent_label: str) -> Dict[str, Any]:
+    """Reads transcripts_sample.jsonl and reports how often a kind of problem came back
+    within 72 hours, in a sample of 8 human-handled chats."""
+    records = []
+    with (DATA_DIR / "transcripts_sample.jsonl").open(encoding="utf-8") as fh:
+        for line in fh:
+            if line.strip():
+                records.append(json.loads(line))
+
+    query = (intent_label or "").strip().lower().replace(" ", "_")
+    matches = [r for r in records if query == r["intent_label"].lower()
+               or query in r["intent_label"].lower()]
+    if not matches:
+        return {"error": "No matching problem type for %r." % intent_label,
+                "available_intent_labels": sorted({r["intent_label"] for r in records})}
+
+    reopened = [r for r in matches if r.get("reopened_within_72h")]
+    return {
+        "intent_label": matches[0]["intent_label"],
+        "sample_size": len(matches),
+        "reopened_within_72h_count": len(reopened),
+        "reopened_within_72h_rate": round(len(reopened) / len(matches), 2),
+        "reopen_reasons": [r["reopen_reason"] for r in reopened if r.get("reopen_reason")],
+        "caveat": "Sample of %d human-handled transcripts, not a statistically significant rate." % len(records),
+    }
+
+
+def care_entitlements(cause_code: str, delay_minutes: int, status: str,
+                      overnight: bool = False) -> Dict[str, Any]:
+    """Reads disruption_policy.json and returns the meal/hotel/ground care entitlement
+    for a disruption in the abstract: same band logic check_policy uses, care fields only,
+    no PNR, no rebooking/refund/goodwill/escalation decision."""
+    policy = json.loads((DATA_DIR / "disruption_policy.json").read_text(encoding="utf-8"))
+    cause_class = policy["cause_classes"].get(cause_code)
+    if cause_class is None:
+        return {"error": "cause_code must be one of %s." % sorted(policy["cause_classes"])}
+
+    if status == "CANCELLED":
+        band = "CXL"
+    elif status == "DIVERTED":
+        band = "DIV"
+    else:
+        band = next((b["band"] for b in policy["delay_bands"]
+                     if b["band"] not in ("CXL", "DIV")
+                     and b["min_minutes"] <= delay_minutes
+                     and (b["max_minutes"] is None or delay_minutes <= b["max_minutes"])), None)
+        if band is None:
+            return {"error": "delay_minutes %r matches no delay band." % delay_minutes}
+
+    row = next((r for r in policy["rows"]
+                if r["cause_class"] == cause_class and r["band"] == band), None)
+    if row is None:
+        return {"error": "No care row for %s/%s." % (cause_class, band)}
+
+    hotel = dict(row["care"].get("hotel", {}))
+    if hotel.get("eligible") == "if_overnight":
+        hotel["eligible"] = bool(overnight)
+
+    return {
+        "policy_row_id": row["policy_row_id"],
+        "meal": row["care"].get("meal_usd"),
+        "hotel": hotel,
+        "ground": row["care"].get("ground_usd"),
+        "explainer": row["explainer_en"],
+        "note": "Base entitlement only: loyalty tier can add a meal bonus or a Summit "
+                "courtesy override, and the customer's actual decision still comes from "
+                "check_policy, which reads their real booking.",
+    }
+
+
 TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence goal
+<<<<<<< HEAD
 EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for the tools you add
     {
         "name": "next_available_day",
@@ -25,10 +128,26 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for
             "and destination on the same cabin. Use this when the traveler asks for the "
             "soonest possible date rather than a specific alternative flight. Returns the "
             "date as an ISO string."
+=======
+EXTRA_TOOLS: List[Dict[str, Any]] = [     # ✏️ Build 2, step 2.1: schemas for the tools you add
+    {
+        "name": "reopen_stats",
+        "description": (
+            "Look up how often a kind of disruption problem came back within 72 hours, "
+            "from a sample of 8 real human-handled chats. Call it when a customer asks "
+            "whether their problem is actually resolved or likely to come back, or when "
+            "deciding how firmly to close out a conversation. It needs the kind of problem "
+            "(for example 'rebook after cancellation', 'hotel request', 'refund versus "
+            "credit', 'missed connection', 'goodwill request', 'status anxiety', 'baggage "
+            "after rebooking', 'voluntary change'). The sample is tiny, so the answer "
+            "always comes with its sample size; treat a single-digit sample as a pattern "
+            "to watch, not a statistic to quote to the customer."
+>>>>>>> 6503cfef2bd617439b6347c3d74fc7b228f32441
         ),
         "input_schema": {
             "type": "object",
             "properties": {
+<<<<<<< HEAD
                 "origin": {"type": "string"},
                 "dest": {"type": "string"},
                 "date": {"type": "string", "description": "ISO date in YYYY-MM-DD format"},
@@ -40,6 +159,41 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for
 ]
 LOCAL_TOOLS: Dict[str, Any] = {           # ✏️ Build 2, step 2.1: the functions behind them
     "next_available_day": next_available_day,
+=======
+                "intent_label": {"type": "string", "description": "The kind of problem, in a few words, e.g. 'rebook after cancellation' or 'hotel request'."},
+            },
+            "required": ["intent_label"],
+        },
+    },
+    {
+        "name": "care_entitlements",
+        "description": (
+            "Look up the meal, hotel and ground-transport entitlement for a disruption in "
+            "the abstract, with the Handbook section 6 explanation attached. Call it when "
+            "a customer asks a general 'do I get a meal or a hotel while I wait?' "
+            "question, including hypothetically before a specific booking has even been "
+            "pulled up. It needs the disruption's cause code, current delay in minutes, "
+            "status, and whether the wait is overnight away from home. Unlike "
+            "check_policy, it does not take a PNR and does not decide rebooking, refund, "
+            "goodwill or escalation: for a real customer's actual entitlement, including "
+            "any loyalty-tier bonus, check_policy is still the source of truth."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cause_code": {"type": "string", "enum": ["WX", "ATC", "MX", "CREW", "SEC"], "description": "Cause of the disruption, from get_flight_status."},
+                "delay_minutes": {"type": "integer", "description": "Current delay in minutes. Pass 0 for CANCELLED or DIVERTED."},
+                "status": {"type": "string", "enum": ["ON_TIME", "DELAYED", "CANCELLED", "DIVERTED"]},
+                "overnight": {"type": "boolean", "description": "True if the wait stretches overnight away from the customer's home airport. Defaults to false."},
+            },
+            "required": ["cause_code", "delay_minutes", "status"],
+        },
+    },
+]
+LOCAL_TOOLS: Dict[str, Any] = {           # ✏️ Build 2, step 2.1: the functions behind them
+    "reopen_stats": reopen_stats,
+    "care_entitlements": care_entitlements,
+>>>>>>> 6503cfef2bd617439b6347c3d74fc7b228f32441
 }
 
 
@@ -92,6 +246,7 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
     while response.stop_reason == "tool_use" and turns < MAX_TOOL_CALLS:
         messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user", "content": tool_results(response)})
+        
         response = client.messages.create(
             model=MODEL, max_tokens=4096, system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
             thinking={"type": "adaptive"}, tools=tools, messages=messages,
@@ -106,7 +261,7 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
 def tool_list() -> List[Dict[str, Any]]:                   # ✏️ Build 2, step 2.2
     """Given. Exactly what Claude is offered on every turn; run.py --show-tools
     prints this list."""
-    return build_tools() + EXTRA_TOOLS
+    return build_tools() + EXTRA_TOOLS + mcp_client.tools()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -142,18 +297,14 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
                 "type": "object",
                 "properties": {
                     "flight_no": {"type": "string"},
-                    "date": {"type": "string", "description": "ISO date in YYYY-MM-DD format"},
+                    "date": {"type": "string", "description": "YYYY-MM-DD"},
                 },
                 "required": ["flight_no", "date"],
             },
         },
         {
             "name": "search_alternatives",
-            "description": (
-                "Find replacement flight options for the disrupted itinerary using the booking's "
-                "PNR. Return the reasonable alternatives, their flight numbers, times, cabin, "
-                "and availability so you can compare options before holding one."
-            ),
+            "description": "search flight alternatives for a given PNR",
             "input_schema": {
                 "type": "object",
                 "properties": {"pnr": {"type": "string"}},
