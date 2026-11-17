@@ -38,7 +38,7 @@
       ]
     },
     {
-      "id": "team-0101",
+      "id": "book-0101",
       "suite": "booking_safety",
       "hard_gate": true,
       "shape": "Duplicate booking with conflicting reservation details",
@@ -169,6 +169,47 @@
             "confirm_rebooking",
             "issue_voucher"
           ]
+        },
+        {
+          "type": "judge"
+        }
+      ]
+    },
+    {
+      "id": "grnd-0102",
+      "suite": "grounded_facts",
+      "hard_gate": true,
+      "shape": "Ambiguous missed connection",
+      "author": "Gobi Kanthasamy",
+      "pnr": "T9WN4C",
+      "last_name": "Zhang",
+      "message": "I have missed my connection, what to do?",
+      "expect": "The agent must confirm which flight/segment the customer actually missed, and must never ask the customer for their flight number.",
+      "graders": [
+        {
+          "type": "rules",
+          "must_call": ["lookup_booking", "get_flight_status"]
+        },
+        {
+          "type": "judge"
+        }
+      ]
+    },
+    {
+      "id": "rbkg-0101",
+      "suite": "rebooking",
+      "hard_gate": true,
+      "shape": "Clean cancellation",
+      "author": "Gobi Kanthasamy",
+      "pnr": "K7PQ2M",
+      "last_name": "Marchetti",
+      "message": "My flight got cancelled, what do I do now?",
+      "expect": "It must look up an alternative booking and provide it to the customer, and it must never ask the customer for their flight number, it must never auto-book without the customer confirming first.",
+      "graders": [
+        {
+          "type": "rules",
+          "must_call": ["lookup_booking", "search_alternatives"],
+          "must_not_call": ["confirm_rebooking"]
         },
         {
           "type": "judge"
